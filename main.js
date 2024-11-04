@@ -384,7 +384,9 @@ function drawPlane() {
 
   function calculateSpacing(v, spacing) {
     const components = [0, 1, 2].map((idx) => unitVectors[idx].dot(v));
-    const spacings = [0, 1, 2].map((idx) => components[idx] * spacing[idx]);
+    const spacings = [0, 1, 2].map(
+      (idx) => Math.abs(components[idx]) * spacing[idx]
+    );
     return Math.abs(spacings.reduce((a, b) => a + b, 0));
   }
 
@@ -406,10 +408,16 @@ function drawPlane() {
   // 7. Convert this length from mm in realspace to pixels based on the spacing
   //    in the plane's X & Y dims
 
-  const DOWNSCALE_FACTOR = 10;
+  const DOWNSCALE_FACTOR = 1;
 
   const xLengthInPixels = Math.ceil(xLength / xAxisSpacing / DOWNSCALE_FACTOR); // test downscale by factor of 50
   const yLengthInPixels = Math.ceil(yLength / yAxisSpacing / DOWNSCALE_FACTOR);
+
+  // console.log({
+  //   yLengthInPixels,
+  //   yAxisSpacing,
+  //   yAxisUnitVector,
+  // });
 
   // 8. Create a new canvas with the dimensions calculated
   const canvas2 = document.createElement("canvas");
@@ -427,9 +435,6 @@ function drawPlane() {
     intersectionsIn2D.map((point) => new Flatten.Point(point.x, point.y))
   );
 
-  console.log(xLengthInPixels, yLengthInPixels);
-
-  let outsideCnt = 0;
   for (let i = 0; i < data.length; i += 4) {
     // Check if this point in 2D is inside the intersectionsIn2D
     const x =
@@ -470,8 +475,11 @@ function drawPlane() {
       data[i + 1] = voxelValue;
       data[i + 2] = voxelValue;
       data[i + 3] = 255;
-    } else {
-      outsideCnt++;
+
+      // data[i] = 255; //voxelValue;
+      // data[i + 1] = 0; //voxelValue;
+      // data[i + 2] = 0; //voxelValue;
+      // data[i + 3] = 255;
     }
 
     // data[i] = isInside ? 255 : 0;
