@@ -38,7 +38,12 @@ controls.panSpeed = 2;
 
 const SQRT1_3 = Math.sqrt(1 / 3);
 
+// 6-intersection cut
+
 const plane = new THREE.Plane(new THREE.Vector3(SQRT1_3, SQRT1_3, SQRT1_3), 0);
+
+// 4-intersection cut
+// const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
 
 const gui = new GUI();
 gui.add(plane.normal, "x", -1, 1);
@@ -110,6 +115,29 @@ function drawPlane() {
   meshesToRemove.forEach((mesh) => scene.remove(mesh));
 
   createSimpleBox();
+
+  // Also draw a simple axial slice
+  // const axialSlice1 = volume.extractSlice(
+  //   "z",
+  //   Math.floor(volume.RASDimensions[2] / 4)
+  // );
+
+  // const axialSlice2 = volume.extractSlice(
+  //   "z",
+  //   Math.floor(volume.RASDimensions[2] / 2)
+  // );
+
+  // const axialSlice3 = volume.extractSlice(
+  //   "z",
+  //   Math.floor(volume.RASDimensions[2] / 1)
+  // );
+  // scene.add(axialSlice1.mesh);
+  // scene.add(axialSlice2.mesh);
+  // scene.add(axialSlice3.mesh);
+
+  // meshesToRemove.push(axialSlice1.mesh);
+  // meshesToRemove.push(axialSlice2.mesh);
+  // meshesToRemove.push(axialSlice3.mesh);
 
   const planeGeometry = new THREE.PlaneGeometry(1000, 10000);
   const planeMaterial = new THREE.MeshBasicMaterial({
@@ -399,6 +427,9 @@ function drawPlane() {
     intersectionsIn2D.map((point) => new Flatten.Point(point.x, point.y))
   );
 
+  console.log(xLengthInPixels, yLengthInPixels);
+
+  let outsideCnt = 0;
   for (let i = 0; i < data.length; i += 4) {
     // Check if this point in 2D is inside the intersectionsIn2D
     const x =
@@ -410,10 +441,43 @@ function drawPlane() {
     // Check if this point is inside the polygon
     const isInside = pointsPolygon.contains(new Flatten.Point(x, y));
 
-    data[i] = isInside ? 255 : 0;
-    data[i + 1] = 0;
-    data[i + 2] = 0;
-    data[i + 3] = isInside ? 255 : 0;
+    if (isInside) {
+      // 10. Convert the point from 2D space back to 3D space
+      const pointIn3D = convert2DSpaceVectorsBackTo3D(
+        plane.normal,
+        intersectionPoints,
+        [new THREE.Vector2(x, y)]
+      )[0];
+
+      // shift the point by 1/2 RASDimensions in each dimension
+      pointIn3D.x += volume.RASDimensions[0] / 2;
+      pointIn3D.y += volume.RASDimensions[1] / 2;
+
+      // 11. Convert from 3D RAS space to ijk voxel space
+      const ijk = [
+        Math.floor(pointIn3D.x / volume.spacing[0]),
+        Math.floor(pointIn3D.y / volume.spacing[1]),
+        Math.floor(pointIn3D.z / volume.spacing[2]),
+      ];
+
+      //console.log({ pointIn3D, ijk });
+
+      // 12. Get the voxel value at this ijk coordinate
+      const voxelValue = volume.getData(ijk[0], ijk[1], ijk[2]);
+
+      // 13. Set the pixel color based on the voxel value
+      data[i] = voxelValue;
+      data[i + 1] = voxelValue;
+      data[i + 2] = voxelValue;
+      data[i + 3] = 255;
+    } else {
+      outsideCnt++;
+    }
+
+    // data[i] = isInside ? 255 : 0;
+    // data[i + 1] = 0;
+    // data[i + 2] = 0;
+    // data[i + 3] = isInside ? 255 : 0;
   }
 
   ctx2.putImageData(imageData, 0, 0);
