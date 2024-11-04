@@ -45,11 +45,12 @@ function createSimpleBox() {
   cube = new THREE.Mesh(geometry, material);
   // cube.visible = false;
   const box = new THREE.BoxHelper(cube);
-  // scene.add(box);
+  scene.add(box);
   scene.add(cube);
 }
 
 let planeMesh = null;
+let intersectionsFaceMesh = null;
 
 function getVertices(mesh) {
   const position = mesh.geometry.getAttribute("position");
@@ -75,6 +76,10 @@ function drawPlane() {
     scene.remove(planeMesh);
   }
 
+  if (intersectionsFaceMesh) {
+    scene.remove(intersectionsFaceMesh);
+  }
+
   dots.forEach((dot) => scene.remove(dot));
 
   const planeGeometry = new THREE.PlaneGeometry(1, 1);
@@ -84,7 +89,7 @@ function drawPlane() {
   });
   planeMesh = new THREE.Mesh(planeGeometry, planeMaterial);
   planeMesh.lookAt(plane.normal);
-  scene.add(planeMesh);
+  // scene.add(planeMesh);
 
   // Find the intersection of the plane with the cube
   const planeNormal = plane.normal;
@@ -109,41 +114,31 @@ function drawPlane() {
     [cubeVertices[4], cubeVertices[6]],
   ].map((edges) => new THREE.Line3(...edges));
 
-  console.log(edges);
-
-  // draw all the edges
-  edges.forEach((edge) => {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(
-        new Float32Array([
-          edge.start.x,
-          edge.start.y,
-          edge.start.z,
-          edge.end.x,
-          edge.end.y,
-          edge.end.z,
-        ]),
-        3
-      )
-    );
-    const material = new THREE.LineBasicMaterial({ color: 0x0000ff });
-    const line = new THREE.Line(geometry, material);
-    scene.add(line);
-  });
-
   const origin = new THREE.Vector3(0, 0, 0);
 
-  const intersectionPoints = edges
+  let intersectionPoints = edges
     .map((edge) => {
       const intersection = new THREE.Vector3();
       plane.intersectLine(edge, intersection);
       return intersection;
     })
     .filter((i) => !i.equals(origin));
-  // .filter((v1, i, arr) => arr.findIndex((v2) => v1.equals(v2)) === i)
-  // .filter((intersection) => plane.distanceToPoint(intersection) === 0);
+
+  // Remove duplicates
+  const uniquePoints = [];
+  intersectionPoints.forEach((point) => {
+    if (!uniquePoints.some((p) => p.equals(point))) {
+      uniquePoints.push(point);
+    }
+  });
+
+  // Order points by angle centered around (0, 0, 0)
+  intersectionPoints = uniquePoints.sort((a, b) => {
+    const angleA = Math.atan2(a.y, a.x);
+    const angleB = Math.atan2(b.y, b.x);
+
+    return angleA - angleB;
+  });
 
   for (let i = 0; i < intersectionPoints.length; i++) {
     const point = intersectionPoints[i];
@@ -163,6 +158,41 @@ function drawPlane() {
     scene.add(dot);
     dots.push(dot);
   }
+
+  // Draw a polygon connecting all the points
+
+  const faceGeometry = new THREE.BufferGeometry();
+  const faceVertices = new Float32Array(intersectionPoints.length * 9);
+
+  for (let i = 0; i < intersectionPoints.length; i++) {
+    const offset = i * 9;
+
+    faceVertices[offset] = intersectionPoints[i].x;
+    faceVertices[offset + 1] = intersectionPoints[i].y;
+    faceVertices[offset + 2] = intersectionPoints[i].z;
+
+    faceVertices[offset + 3] =
+      intersectionPoints[(i + 1) % intersectionPoints.length].x;
+    faceVertices[offset + 4] =
+      intersectionPoints[(i + 1) % intersectionPoints.length].y;
+    faceVertices[offset + 5] =
+      intersectionPoints[(i + 1) % intersectionPoints.length].z;
+
+    faceVertices[offset + 6] = 0;
+    faceVertices[offset + 7] = 0;
+    faceVertices[offset + 8] = 0;
+  }
+
+  faceGeometry.setAttribute(
+    "position",
+    new THREE.BufferAttribute(faceVertices, 3)
+  );
+  const faceMaterial = new THREE.MeshBasicMaterial({
+    color: 0xff0000,
+    side: THREE.DoubleSide,
+  });
+  intersectionsFaceMesh = new THREE.Mesh(faceGeometry, faceMaterial);
+  scene.add(intersectionsFaceMesh);
 }
 
 function animate() {
