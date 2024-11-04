@@ -6,6 +6,8 @@ import {
   intersectionsTo2DSpace,
   convert2DSpaceVectorsBackTo3D,
 } from "./helpers";
+import { Vector3 } from "three";
+import Flatten from "@flatten-js/core";
 
 const volume = await loadNRRD("./I.nrrd");
 
@@ -63,6 +65,8 @@ ctx.fillRect(0, 0, canvas.width, canvas.height);
 
 document.body.appendChild(canvas);
 
+const meshesToRemove = [];
+
 function createSimpleBox() {
   const geometry = new THREE.BoxGeometry(
     volume.RASDimensions[0],
@@ -77,6 +81,9 @@ function createSimpleBox() {
   const box = new THREE.BoxHelper(cube);
   scene.add(box);
   scene.add(cube);
+
+  meshesToRemove.push(cube);
+  meshesToRemove.push(box);
 }
 
 let planeMesh = null;
@@ -99,18 +106,10 @@ function getVertices(mesh) {
   return vertices;
 }
 
-const meshesToRemove = [];
-
 function drawPlane() {
-  if (planeMesh) {
-    scene.remove(planeMesh);
-  }
-
-  if (intersectionsFaceMesh) {
-    scene.remove(intersectionsFaceMesh);
-  }
-
   meshesToRemove.forEach((mesh) => scene.remove(mesh));
+
+  createSimpleBox();
 
   const planeGeometry = new THREE.PlaneGeometry(1000, 10000);
   const planeMaterial = new THREE.MeshBasicMaterial({
@@ -282,7 +281,7 @@ function drawPlane() {
 
   intersectionsFaceMesh = new THREE.Mesh(planeGeometry2, planeMaterial2);
   intersectionsFaceMesh.lookAt(plane.normal);
-  scene.add(intersectionsFaceMesh);
+  //scene.add(intersectionsFaceMesh);
 
   meshesToRemove.push(intersectionsFaceMesh);
   meshesToRemove.push(planeMesh);
@@ -339,12 +338,114 @@ function drawPlane() {
     boundingRectMaterial
   );
   scene.add(boundingRectMesh);
+  meshesToRemove.push(boundingRectMesh);
+
+  // 5. Now find the length of the bounding box in the x-axis and y-axis in mm.
+  //    This will become the width and height of the canvas & the PlaneGeometry
+  //    that we will paint the current slice on.
+
+  const xLength = maxX - minX;
+  const yLength = maxY - minY;
+
+  // 6. Calculate the spacing in the projected X & Y dimensions
+  const xUnitVector = new Vector3(1, 0, 0);
+  const yUnitVector = new Vector3(0, 1, 0);
+  const zUnitVector = new Vector3(0, 0, 1);
+
+  const unitVectors = [xUnitVector, yUnitVector, zUnitVector];
+
+  function calculateSpacing(v, spacing) {
+    const components = [0, 1, 2].map((idx) => unitVectors[idx].dot(v));
+    const spacings = [0, 1, 2].map((idx) => components[idx] * spacing[idx]);
+    return Math.abs(spacings.reduce((a, b) => a + b, 0));
+  }
+
+  // The x-axis was projected on the first to second intersection
+  const xAxisUnitVector = intersectionPoints[1]
+    .clone()
+    .sub(intersectionPoints[0])
+    .normalize();
+
+  // The y-axis was the cross product of the normal and x-axis
+  const yAxisUnitVector = plane.normal
+    .clone()
+    .cross(xAxisUnitVector)
+    .normalize();
+
+  const xAxisSpacing = calculateSpacing(xAxisUnitVector, volume.spacing);
+  const yAxisSpacing = calculateSpacing(yAxisUnitVector, volume.spacing);
+
+  // 7. Convert this length from mm in realspace to pixels based on the spacing
+  //    in the plane's X & Y dims
+
+  const DOWNSCALE_FACTOR = 10;
+
+  const xLengthInPixels = Math.ceil(xLength / xAxisSpacing / DOWNSCALE_FACTOR); // test downscale by factor of 50
+  const yLengthInPixels = Math.ceil(yLength / yAxisSpacing / DOWNSCALE_FACTOR);
+
+  // 8. Create a new canvas with the dimensions calculated
+  const canvas2 = document.createElement("canvas");
+  canvas2.width = xLengthInPixels;
+  canvas2.height = yLengthInPixels;
+  const ctx2 = canvas2.getContext("2d");
+
+  // 9. Fill the canvas buffer
+  const imageData = ctx2.createImageData(xLengthInPixels, yLengthInPixels);
+  const data = imageData.data;
+
+  document.body.appendChild(canvas2);
+
+  const pointsPolygon = new Flatten.Polygon(
+    intersectionsIn2D.map((point) => new Flatten.Point(point.x, point.y))
+  );
+
+  for (let i = 0; i < data.length; i += 4) {
+    // Check if this point in 2D is inside the intersectionsIn2D
+    const x =
+      ((i / 4) % xLengthInPixels) * DOWNSCALE_FACTOR * xAxisSpacing + minX;
+    const y =
+      Math.floor(i / 4 / xLengthInPixels) * DOWNSCALE_FACTOR * yAxisSpacing +
+      minY;
+
+    // Check if this point is inside the polygon
+    const isInside = pointsPolygon.contains(new Flatten.Point(x, y));
+
+    data[i] = isInside ? 255 : 0;
+    data[i + 1] = 0;
+    data[i + 2] = 0;
+    data[i + 3] = isInside ? 255 : 0;
+  }
+
+  ctx2.putImageData(imageData, 0, 0);
+
+  // 10. Create a new texture from the canvas
+  const canvasMap2 = new THREE.CanvasTexture(canvas2);
+  // canvasMap2.minFilter = THREE.LinearFilter;
+  // canvasMap2.generateMipmaps = true;
+  // canvasMap2.wrapS = canvasMap2.wrapT = THREE.ClampToEdgeWrapping;
+  // canvasMap2.colorSpace = THREE.SRGBColorSpace;
+
+  // 11. Create a new PlaneGeometry with the dimensions calculated
+  const planeGeometry3 = new THREE.PlaneGeometry(xLength, yLength);
+  const planeMaterial3 = new THREE.MeshBasicMaterial({
+    map: canvasMap2,
+    side: THREE.DoubleSide,
+    transparent: true,
+  });
+
+  const planeMesh2 = new THREE.Mesh(planeGeometry3, planeMaterial3);
+  planeMesh2.lookAt(plane.normal);
+
+  // TODO: figure out why the flip is needed
+  planeMesh2.scale.multiply(new THREE.Vector3(1, -1, 1));
+  scene.add(planeMesh2);
+
+  meshesToRemove.push(planeMesh2);
 }
 
 function animate() {
   controls.update();
 
-  createSimpleBox();
   drawPlane();
 
   renderer.render(scene, camera);
