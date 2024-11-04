@@ -1,6 +1,15 @@
 import * as THREE from "three";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 import { TrackballControls } from "three/addons/controls/TrackballControls.js";
+import { loadNRRD } from "./nrrd";
+import {
+  intersectionsTo2DSpace,
+  convert2DSpaceVectorsBackTo3D,
+} from "./helpers";
+
+const volume = await loadNRRD("./I.nrrd");
+
+console.log(volume);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(
@@ -19,16 +28,15 @@ document.body.appendChild(renderer.domElement);
 camera.position.z = 5;
 
 const controls = new TrackballControls(camera, renderer.domElement);
-controls.minDistance = 1;
-controls.maxDistance = 2;
+controls.minDistance = 300;
+controls.maxDistance = 400;
 controls.rotateSpeed = 5.0;
 controls.zoomSpeed = 5;
 controls.panSpeed = 2;
 
-const plane = new THREE.Plane(
-  new THREE.Vector3(0, Math.SQRT1_2, Math.SQRT1_2),
-  0
-);
+const SQRT1_3 = Math.sqrt(1 / 3);
+
+const plane = new THREE.Plane(new THREE.Vector3(SQRT1_3, SQRT1_3, SQRT1_3), 0);
 
 const gui = new GUI();
 gui.add(plane.normal, "x", -1, 1);
@@ -41,18 +49,26 @@ const canvas = document.createElement("canvas");
 
 // load a4c.jpeg and draw to canvas
 const ctx = canvas.getContext("2d");
-const img = new Image();
-img.onload = function () {
-  canvas.width = img.width;
-  canvas.height = img.height;
-  ctx.drawImage(img, 0, 0);
-};
-img.src = "https://i.imgur.com/7Fqs2mU.png";
+// const img = new Image();
+// img.onload = function () {
+//   canvas.width = img.width;
+//   canvas.height = img.height;
+//   ctx.drawImage(img, 0, 0);
+// };
+// img.src = "https://i.imgur.com/7Fqs2mU.png";
+
+// draw the canvas as blue
+ctx.fillStyle = "blue";
+ctx.fillRect(0, 0, canvas.width, canvas.height);
 
 document.body.appendChild(canvas);
 
 function createSimpleBox() {
-  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  const geometry = new THREE.BoxGeometry(
+    volume.RASDimensions[0],
+    volume.RASDimensions[1],
+    volume.RASDimensions[2]
+  );
   const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
 
   material.clippingPlanes = [plane];
@@ -83,7 +99,7 @@ function getVertices(mesh) {
   return vertices;
 }
 
-const dots = [];
+const meshesToRemove = [];
 
 function drawPlane() {
   if (planeMesh) {
@@ -94,9 +110,9 @@ function drawPlane() {
     scene.remove(intersectionsFaceMesh);
   }
 
-  dots.forEach((dot) => scene.remove(dot));
+  meshesToRemove.forEach((mesh) => scene.remove(mesh));
 
-  const planeGeometry = new THREE.PlaneGeometry(1, 1);
+  const planeGeometry = new THREE.PlaneGeometry(1000, 10000);
   const planeMaterial = new THREE.MeshBasicMaterial({
     color: 0xffff00,
     side: THREE.DoubleSide,
@@ -104,10 +120,6 @@ function drawPlane() {
   planeMesh = new THREE.Mesh(planeGeometry, planeMaterial);
   planeMesh.lookAt(plane.normal);
   // scene.add(planeMesh);
-
-  // Find the intersection of the plane with the cube
-  const planeNormal = plane.normal;
-  const planeConstant = plane.constant;
 
   const cubeVertices = getVertices(cube);
 
@@ -165,12 +177,12 @@ function drawPlane() {
       )
     );
     const dotMaterial = new THREE.PointsMaterial({
-      size: 0.1,
+      size: 25,
       color: 0xff0000,
     });
     const dot = new THREE.Points(dotGeometry, dotMaterial);
     scene.add(dot);
-    dots.push(dot);
+    meshesToRemove.push(dot);
   }
 
   // Draw a polygon connecting all the points
@@ -197,27 +209,10 @@ function drawPlane() {
     faceVertices[offset + 8] = 0;
   }
 
-  const uvs = new Float32Array(intersectionPoints.length * 6);
-
-  for (let i = 0; i < intersectionPoints.length; i++) {
-    const offset = i * 6;
-
-    uvs[offset] = 0;
-    uvs[offset + 1] = 0;
-
-    uvs[offset + 2] = 1;
-    uvs[offset + 3] = 0;
-
-    uvs[offset + 4] = 0.5;
-    uvs[offset + 5] = 1;
-  }
-
   faceGeometry.setAttribute(
     "position",
     new THREE.BufferAttribute(faceVertices, 3)
   );
-
-  faceGeometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
 
   const canvasMap = new THREE.CanvasTexture(canvas);
   // canvasMap.minFilter = THREE.LinearFilter;
@@ -234,7 +229,7 @@ function drawPlane() {
   // scene.add(intersectionsFaceMesh);
 
   // Try a different approach - add a PlaneGeometry and clip it against the edges of the boudning box
-  const planeGeometry2 = new THREE.PlaneGeometry(1.4, 1.4);
+  const planeGeometry2 = new THREE.PlaneGeometry(1000, 1000);
   const planeMaterial2 = new THREE.MeshBasicMaterial({
     map: canvasMap,
     color: 0xffffff,
@@ -273,25 +268,6 @@ function drawPlane() {
   const bottomPlane = new THREE.Plane();
   bottomPlane.setFromNormalAndCoplanarPoint(upward, min);
 
-  // // draw each clipping plane as a planeGeometry
-  // const clippingPlaneGeometry = new THREE.PlaneGeometry(1, 1);
-  // const clippingPlaneMaterial = new THREE.MeshBasicMaterial({
-  //   color: 0xff0000,
-  //   side: THREE.DoubleSide,
-  // });
-
-  // const clippingPlanesMeshes = [p1].map((plane) => {
-  //   const clippingPlaneMesh = new THREE.Mesh(
-  //     clippingPlaneGeometry,
-  //     clippingPlaneMaterial
-  //   );
-  //   clippingPlaneMesh.lookAt(plane.normal);
-  //   clippingPlaneMesh.position.copy(
-  //     plane.normal.clone().multiplyScalar(plane.constant)
-  //   );
-  //   scene.add(clippingPlaneMesh);
-  // });
-
   const clippingPlanes = [
     frontPlane,
     leftPlane,
@@ -301,25 +277,68 @@ function drawPlane() {
     bottomPlane,
   ];
 
-  // crate a 2x2 box and clip it with 6 planes
-  const largeBoxGeometry = new THREE.BoxGeometry(2, 2, 2);
-  const largeBoxMaterial = new THREE.MeshBasicMaterial({
-    color: 0x00ff00,
-    side: THREE.DoubleSide,
-  });
-
-  largeBoxMaterial.clippingPlanes = clippingPlanes;
-
-  const largeBox = new THREE.Mesh(largeBoxGeometry, largeBoxMaterial);
-  largeBox.position.set(0, 0, 0);
-  scene.add(largeBox);
-
   planeMaterial2.clippingPlanes = clippingPlanes;
   planeMaterial2.clipIntersection = false;
 
   intersectionsFaceMesh = new THREE.Mesh(planeGeometry2, planeMaterial2);
   intersectionsFaceMesh.lookAt(plane.normal);
   scene.add(intersectionsFaceMesh);
+
+  meshesToRemove.push(intersectionsFaceMesh);
+  meshesToRemove.push(planeMesh);
+
+  // 1. Project intersection points into 2D space
+  const intersectionsIn2D = intersectionsTo2DSpace(
+    plane.normal,
+    intersectionPoints
+  );
+
+  // 2. Find the bounding box of all the intersection points in 2D
+  const xValues = intersectionsIn2D.map((point) => point.x);
+  const yValues = intersectionsIn2D.map((point) => point.y);
+
+  const minX = Math.min(...xValues);
+  const maxX = Math.max(...xValues);
+  const minY = Math.min(...yValues);
+  const maxY = Math.max(...yValues);
+
+  const boundingRectVectors = [
+    new THREE.Vector2(minX, minY),
+    new THREE.Vector2(minX, maxY),
+    new THREE.Vector2(maxX, maxY),
+    new THREE.Vector2(maxX, minY),
+  ];
+
+  // 3. Re-project the bounding box back into 3D space
+  const intersectionBoundingRectIn3D = convert2DSpaceVectorsBackTo3D(
+    plane.normal,
+    intersectionPoints,
+    boundingRectVectors
+  );
+
+  // 4. Draw the mesh of the bounding box
+  const boundingRectGeometry = new THREE.BufferGeometry();
+  const boundingRectVertices = new Float32Array(12);
+
+  for (let i = 0; i < intersectionBoundingRectIn3D.length; i++) {
+    const offset = i * 3;
+
+    boundingRectVertices[offset] = intersectionBoundingRectIn3D[i].x;
+    boundingRectVertices[offset + 1] = intersectionBoundingRectIn3D[i].y;
+    boundingRectVertices[offset + 2] = intersectionBoundingRectIn3D[i].z;
+  }
+
+  boundingRectGeometry.setAttribute(
+    "position",
+    new THREE.BufferAttribute(boundingRectVertices, 3)
+  );
+
+  const boundingRectMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
+  const boundingRectMesh = new THREE.LineLoop(
+    boundingRectGeometry,
+    boundingRectMaterial
+  );
+  scene.add(boundingRectMesh);
 }
 
 function animate() {
