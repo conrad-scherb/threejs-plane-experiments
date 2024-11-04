@@ -37,13 +37,27 @@ gui.add(plane.normal, "z", -1, 1);
 
 let cube = null;
 
+const canvas = document.createElement("canvas");
+
+// load a4c.jpeg and draw to canvas
+const ctx = canvas.getContext("2d");
+const img = new Image();
+img.onload = function () {
+  canvas.width = img.width;
+  canvas.height = img.height;
+  ctx.drawImage(img, 0, 0);
+};
+img.src = "https://i.imgur.com/7Fqs2mU.png";
+
+document.body.appendChild(canvas);
+
 function createSimpleBox() {
   const geometry = new THREE.BoxGeometry(1, 1, 1);
   const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
 
   material.clippingPlanes = [plane];
   cube = new THREE.Mesh(geometry, material);
-  // cube.visible = false;
+  cube.visible = true;
   const box = new THREE.BoxHelper(cube);
   scene.add(box);
   scene.add(cube);
@@ -183,15 +197,128 @@ function drawPlane() {
     faceVertices[offset + 8] = 0;
   }
 
+  const uvs = new Float32Array(intersectionPoints.length * 6);
+
+  for (let i = 0; i < intersectionPoints.length; i++) {
+    const offset = i * 6;
+
+    uvs[offset] = 0;
+    uvs[offset + 1] = 0;
+
+    uvs[offset + 2] = 1;
+    uvs[offset + 3] = 0;
+
+    uvs[offset + 4] = 0.5;
+    uvs[offset + 5] = 1;
+  }
+
   faceGeometry.setAttribute(
     "position",
     new THREE.BufferAttribute(faceVertices, 3)
   );
+
+  faceGeometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+
+  const canvasMap = new THREE.CanvasTexture(canvas);
+  // canvasMap.minFilter = THREE.LinearFilter;
+  // canvasMap.generateMipmaps = true;
+  // canvasMap.wrapS = canvasMap.wrapT = THREE.ClampToEdgeWrapping;
+  // canvasMap.colorSpace = THREE.SRGBColorSpace;
+
   const faceMaterial = new THREE.MeshBasicMaterial({
-    color: 0xff0000,
+    map: canvasMap,
     side: THREE.DoubleSide,
   });
-  intersectionsFaceMesh = new THREE.Mesh(faceGeometry, faceMaterial);
+
+  // intersectionsFaceMesh = new THREE.Mesh(faceGeometry, faceMaterial);
+  // scene.add(intersectionsFaceMesh);
+
+  // Try a different approach - add a PlaneGeometry and clip it against the edges of the boudning box
+  const planeGeometry2 = new THREE.PlaneGeometry(1.4, 1.4);
+  const planeMaterial2 = new THREE.MeshBasicMaterial({
+    map: canvasMap,
+    color: 0xffffff,
+    side: THREE.DoubleSide,
+  });
+
+  const box3 = new THREE.Box3();
+  box3.setFromObject(cube);
+
+  const min = box3.min;
+  const max = box3.max;
+
+  const forward = new THREE.Vector3(0, 0, 1);
+  const backward = new THREE.Vector3(0, 0, -1);
+  const right = new THREE.Vector3(1, 0, 0);
+  const left = new THREE.Vector3(-1, 0, 0);
+  const upward = new THREE.Vector3(0, 1, 0);
+  const downward = new THREE.Vector3(0, -1, 0);
+
+  // Box faces as planes
+  const frontPlane = new THREE.Plane();
+  frontPlane.setFromNormalAndCoplanarPoint(forward, min);
+
+  const leftPlane = new THREE.Plane();
+  leftPlane.setFromNormalAndCoplanarPoint(right, min);
+
+  const rightPlane = new THREE.Plane();
+  rightPlane.setFromNormalAndCoplanarPoint(left, max);
+
+  const backPlane = new THREE.Plane();
+  backPlane.setFromNormalAndCoplanarPoint(backward, max);
+
+  const topPlane = new THREE.Plane();
+  topPlane.setFromNormalAndCoplanarPoint(downward, max);
+
+  const bottomPlane = new THREE.Plane();
+  bottomPlane.setFromNormalAndCoplanarPoint(upward, min);
+
+  // // draw each clipping plane as a planeGeometry
+  // const clippingPlaneGeometry = new THREE.PlaneGeometry(1, 1);
+  // const clippingPlaneMaterial = new THREE.MeshBasicMaterial({
+  //   color: 0xff0000,
+  //   side: THREE.DoubleSide,
+  // });
+
+  // const clippingPlanesMeshes = [p1].map((plane) => {
+  //   const clippingPlaneMesh = new THREE.Mesh(
+  //     clippingPlaneGeometry,
+  //     clippingPlaneMaterial
+  //   );
+  //   clippingPlaneMesh.lookAt(plane.normal);
+  //   clippingPlaneMesh.position.copy(
+  //     plane.normal.clone().multiplyScalar(plane.constant)
+  //   );
+  //   scene.add(clippingPlaneMesh);
+  // });
+
+  const clippingPlanes = [
+    frontPlane,
+    leftPlane,
+    rightPlane,
+    backPlane,
+    topPlane,
+    bottomPlane,
+  ];
+
+  // crate a 2x2 box and clip it with 6 planes
+  const largeBoxGeometry = new THREE.BoxGeometry(2, 2, 2);
+  const largeBoxMaterial = new THREE.MeshBasicMaterial({
+    color: 0x00ff00,
+    side: THREE.DoubleSide,
+  });
+
+  largeBoxMaterial.clippingPlanes = clippingPlanes;
+
+  const largeBox = new THREE.Mesh(largeBoxGeometry, largeBoxMaterial);
+  largeBox.position.set(0, 0, 0);
+  scene.add(largeBox);
+
+  planeMaterial2.clippingPlanes = clippingPlanes;
+  planeMaterial2.clipIntersection = false;
+
+  intersectionsFaceMesh = new THREE.Mesh(planeGeometry2, planeMaterial2);
+  intersectionsFaceMesh.lookAt(plane.normal);
   scene.add(intersectionsFaceMesh);
 }
 
