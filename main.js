@@ -40,10 +40,10 @@ const SQRT1_3 = Math.sqrt(1 / 3);
 
 // 6-intersection cut
 
-const plane = new THREE.Plane(new THREE.Vector3(SQRT1_3, SQRT1_3, SQRT1_3), 0);
+// const plane = new THREE.Plane(new THREE.Vector3(SQRT1_3, SQRT1_3, SQRT1_3), 0);
 
 // 4-intersection cut
-// const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+const plane = new THREE.Plane(new THREE.Vector3(1, 0, 0), 0);
 
 const gui = new GUI();
 gui.add(plane.normal, "x", -1, 1);
@@ -413,12 +413,6 @@ function drawPlane() {
   const xLengthInPixels = Math.ceil(xLength / xAxisSpacing / DOWNSCALE_FACTOR); // test downscale by factor of 50
   const yLengthInPixels = Math.ceil(yLength / yAxisSpacing / DOWNSCALE_FACTOR);
 
-  // console.log({
-  //   yLengthInPixels,
-  //   yAxisSpacing,
-  //   yAxisUnitVector,
-  // });
-
   // 8. Create a new canvas with the dimensions calculated
   const canvas2 = document.createElement("canvas");
   canvas2.width = xLengthInPixels;
@@ -430,6 +424,9 @@ function drawPlane() {
   const data = imageData.data;
 
   document.body.appendChild(canvas2);
+
+  const windowLow = 0;
+  const windowHigh = 3952;
 
   const pointsPolygon = new Flatten.Polygon(
     intersectionsIn2D.map((point) => new Flatten.Point(point.x, point.y))
@@ -457,6 +454,7 @@ function drawPlane() {
       // shift the point by 1/2 RASDimensions in each dimension
       pointIn3D.x += volume.RASDimensions[0] / 2;
       pointIn3D.y += volume.RASDimensions[1] / 2;
+      pointIn3D.z += volume.RASDimensions[2] / 2;
 
       // 11. Convert from 3D RAS space to ijk voxel space
       const ijk = [
@@ -465,37 +463,36 @@ function drawPlane() {
         Math.floor(pointIn3D.z / volume.spacing[2]),
       ];
 
-      //console.log({ pointIn3D, ijk });
-
       // 12. Get the voxel value at this ijk coordinate
       const voxelValue = volume.getData(ijk[0], ijk[1], ijk[2]);
 
-      // 13. Set the pixel color based on the voxel value
-      data[i] = voxelValue;
-      data[i + 1] = voxelValue;
-      data[i + 2] = voxelValue;
+      // 13. Apply windowing to voxel value
+      const windowedValue = Math.floor(
+        (255 * (voxelValue - windowLow)) / (windowHigh - windowLow)
+      );
+
+      // 14. Set the pixel color based on the voxel value
+      data[i] = windowedValue;
+      data[i + 1] = windowedValue;
+      data[i + 2] = windowedValue;
       data[i + 3] = 255;
-
-      // data[i] = 255; //voxelValue;
-      // data[i + 1] = 0; //voxelValue;
-      // data[i + 2] = 0; //voxelValue;
-      // data[i + 3] = 255;
+    } else {
+      // make pixel blue to clearly show outside bounds
+      data[i] = 0;
+      data[i + 1] = 0;
+      data[i + 2] = 255;
+      data[i + 3] = 255;
     }
-
-    // data[i] = isInside ? 255 : 0;
-    // data[i + 1] = 0;
-    // data[i + 2] = 0;
-    // data[i + 3] = isInside ? 255 : 0;
   }
 
   ctx2.putImageData(imageData, 0, 0);
 
   // 10. Create a new texture from the canvas
   const canvasMap2 = new THREE.CanvasTexture(canvas2);
-  // canvasMap2.minFilter = THREE.LinearFilter;
-  // canvasMap2.generateMipmaps = true;
-  // canvasMap2.wrapS = canvasMap2.wrapT = THREE.ClampToEdgeWrapping;
-  // canvasMap2.colorSpace = THREE.SRGBColorSpace;
+  canvasMap2.minFilter = THREE.LinearFilter;
+  canvasMap2.generateMipmaps = true;
+  canvasMap2.wrapS = canvasMap2.wrapT = THREE.ClampToEdgeWrapping;
+  canvasMap2.colorSpace = THREE.SRGBColorSpace;
 
   // 11. Create a new PlaneGeometry with the dimensions calculated
   const planeGeometry3 = new THREE.PlaneGeometry(xLength, yLength);
