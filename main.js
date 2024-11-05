@@ -68,8 +68,6 @@ const ctx = canvas.getContext("2d");
 ctx.fillStyle = "blue";
 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-document.body.appendChild(canvas);
-
 const meshesToRemove = [];
 
 function createSimpleBox() {
@@ -116,20 +114,20 @@ function drawPlane() {
 
   createSimpleBox();
 
-  // Also draw a simple axial slice
+  // // Also draw a simple axial slice
   // const axialSlice1 = volume.extractSlice(
   //   "z",
-  //   Math.floor(volume.RASDimensions[2] / 4)
+  //   Math.floor(volume.dimensions[2] / 4)
   // );
 
   // const axialSlice2 = volume.extractSlice(
   //   "z",
-  //   Math.floor(volume.RASDimensions[2] / 2)
+  //   Math.floor(volume.dimensions[2] / 2)
   // );
 
   // const axialSlice3 = volume.extractSlice(
   //   "z",
-  //   Math.floor(volume.RASDimensions[2] / 1)
+  //   Math.floor(volume.dimensions[2] / 1)
   // );
   // scene.add(axialSlice1.mesh);
   // scene.add(axialSlice2.mesh);
@@ -138,15 +136,6 @@ function drawPlane() {
   // meshesToRemove.push(axialSlice1.mesh);
   // meshesToRemove.push(axialSlice2.mesh);
   // meshesToRemove.push(axialSlice3.mesh);
-
-  const planeGeometry = new THREE.PlaneGeometry(1000, 10000);
-  const planeMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffff00,
-    side: THREE.DoubleSide,
-  });
-  planeMesh = new THREE.Mesh(planeGeometry, planeMaterial);
-  planeMesh.lookAt(plane.normal);
-  // scene.add(planeMesh);
 
   const cubeVertices = getVertices(cube);
 
@@ -240,79 +229,6 @@ function drawPlane() {
     "position",
     new THREE.BufferAttribute(faceVertices, 3)
   );
-
-  const canvasMap = new THREE.CanvasTexture(canvas);
-  // canvasMap.minFilter = THREE.LinearFilter;
-  // canvasMap.generateMipmaps = true;
-  // canvasMap.wrapS = canvasMap.wrapT = THREE.ClampToEdgeWrapping;
-  // canvasMap.colorSpace = THREE.SRGBColorSpace;
-
-  const faceMaterial = new THREE.MeshBasicMaterial({
-    map: canvasMap,
-    side: THREE.DoubleSide,
-  });
-
-  // intersectionsFaceMesh = new THREE.Mesh(faceGeometry, faceMaterial);
-  // scene.add(intersectionsFaceMesh);
-
-  // Try a different approach - add a PlaneGeometry and clip it against the edges of the boudning box
-  const planeGeometry2 = new THREE.PlaneGeometry(1000, 1000);
-  const planeMaterial2 = new THREE.MeshBasicMaterial({
-    map: canvasMap,
-    color: 0xffffff,
-    side: THREE.DoubleSide,
-  });
-
-  const box3 = new THREE.Box3();
-  box3.setFromObject(cube);
-
-  const min = box3.min;
-  const max = box3.max;
-
-  const forward = new THREE.Vector3(0, 0, 1);
-  const backward = new THREE.Vector3(0, 0, -1);
-  const right = new THREE.Vector3(1, 0, 0);
-  const left = new THREE.Vector3(-1, 0, 0);
-  const upward = new THREE.Vector3(0, 1, 0);
-  const downward = new THREE.Vector3(0, -1, 0);
-
-  // Box faces as planes
-  const frontPlane = new THREE.Plane();
-  frontPlane.setFromNormalAndCoplanarPoint(forward, min);
-
-  const leftPlane = new THREE.Plane();
-  leftPlane.setFromNormalAndCoplanarPoint(right, min);
-
-  const rightPlane = new THREE.Plane();
-  rightPlane.setFromNormalAndCoplanarPoint(left, max);
-
-  const backPlane = new THREE.Plane();
-  backPlane.setFromNormalAndCoplanarPoint(backward, max);
-
-  const topPlane = new THREE.Plane();
-  topPlane.setFromNormalAndCoplanarPoint(downward, max);
-
-  const bottomPlane = new THREE.Plane();
-  bottomPlane.setFromNormalAndCoplanarPoint(upward, min);
-
-  const clippingPlanes = [
-    frontPlane,
-    leftPlane,
-    rightPlane,
-    backPlane,
-    topPlane,
-    bottomPlane,
-  ];
-
-  planeMaterial2.clippingPlanes = clippingPlanes;
-  planeMaterial2.clipIntersection = false;
-
-  intersectionsFaceMesh = new THREE.Mesh(planeGeometry2, planeMaterial2);
-  intersectionsFaceMesh.lookAt(plane.normal);
-  //scene.add(intersectionsFaceMesh);
-
-  meshesToRemove.push(intersectionsFaceMesh);
-  meshesToRemove.push(planeMesh);
 
   // 1. Project intersection points into 2D space
   const intersectionsIn2D = intersectionsTo2DSpace(
@@ -408,10 +324,8 @@ function drawPlane() {
   // 7. Convert this length from mm in realspace to pixels based on the spacing
   //    in the plane's X & Y dims
 
-  const DOWNSCALE_FACTOR = 1;
-
-  const xLengthInPixels = Math.ceil(xLength / xAxisSpacing / DOWNSCALE_FACTOR); // test downscale by factor of 50
-  const yLengthInPixels = Math.ceil(yLength / yAxisSpacing / DOWNSCALE_FACTOR);
+  const xLengthInPixels = Math.ceil(xLength / xAxisSpacing);
+  const yLengthInPixels = Math.ceil(yLength / yAxisSpacing);
 
   // 8. Create a new canvas with the dimensions calculated
   const canvas2 = document.createElement("canvas");
@@ -423,7 +337,7 @@ function drawPlane() {
   const imageData = ctx2.createImageData(xLengthInPixels, yLengthInPixels);
   const data = imageData.data;
 
-  document.body.appendChild(canvas2);
+  //document.body.appendChild(canvas2);
 
   const windowLow = 0;
   const windowHigh = 3952;
@@ -434,11 +348,8 @@ function drawPlane() {
 
   for (let i = 0; i < data.length; i += 4) {
     // Check if this point in 2D is inside the intersectionsIn2D
-    const x =
-      ((i / 4) % xLengthInPixels) * DOWNSCALE_FACTOR * xAxisSpacing + minX;
-    const y =
-      Math.floor(i / 4 / xLengthInPixels) * DOWNSCALE_FACTOR * yAxisSpacing +
-      minY;
+    const x = ((i / 4) % xLengthInPixels) * xAxisSpacing + minX;
+    const y = Math.floor(i / 4 / xLengthInPixels) * yAxisSpacing + minY;
 
     // Check if this point is inside the polygon
     const isInside = pointsPolygon.contains(new Flatten.Point(x, y));
@@ -502,14 +413,112 @@ function drawPlane() {
     transparent: true,
   });
 
-  const planeMesh2 = new THREE.Mesh(planeGeometry3, planeMaterial3);
-  planeMesh2.lookAt(plane.normal);
+  // 12. Rotate the PlaneGeometry such that the top left corner of the plane
+  //     is at the first intersection point
 
-  // TODO: figure out why the flip is needed
-  planeMesh2.scale.multiply(new THREE.Vector3(1, -1, 1));
-  scene.add(planeMesh2);
+  // Extract the vertices of the PlaneGeometry
+  const planeVertexPositionsBuffer = planeGeometry3.getAttribute("position");
+  const planeVertexPositions = [];
 
-  meshesToRemove.push(planeMesh2);
+  for (let i = 0; i < planeVertexPositionsBuffer.count; i++) {
+    const vertex = new THREE.Vector3(
+      planeVertexPositionsBuffer.getX(i),
+      planeVertexPositionsBuffer.getY(i),
+      planeVertexPositionsBuffer.getZ(i)
+    );
+
+    planeVertexPositions.push(vertex);
+  }
+
+  // Find the length of the first edge
+  const planeGeometryEdgeLength = planeVertexPositions[1].distanceTo(
+    planeVertexPositions[0]
+  );
+
+  // Find the edges of the intersectionBoundingRectIn3D
+
+  // let rotationAngle = 0;
+  // for (let i = 0; i < intersectionBoundingRectIn3D.length; i++) {
+  //   const edgeLength = intersectionBoundingRectIn3D[i].distanceTo(
+  //     intersectionBoundingRectIn3D[
+  //       (i + 1) % intersectionBoundingRectIn3D.length
+  //     ]
+  //   );
+
+  //   if (Math.abs(edgeLength - planeGeometryEdgeLength) < 0.1) {
+  //     // Find the angle between these two edges
+  //     const edge1 = intersectionBoundingRectIn3D[i]
+  //       .clone()
+  //       .sub(
+  //         intersectionBoundingRectIn3D[
+  //           (i + 1) % intersectionBoundingRectIn3D.length
+  //         ]
+  //       );
+  //     const edge2 = planeVertexPositions[1]
+  //       .clone()
+  //       .sub(planeVertexPositions[0]);
+
+  //     rotationAngle = edge1.angleTo(edge2) + Math.PI / 2;
+
+  //     console.log(
+  //       "Found matching edge in degrees ",
+  //       rotationAngle * (180 / Math.PI)
+  //     );
+
+  //     break;
+  //   }
+  // }
+
+  // Project the PlaneGeometry corners into 2D space
+  const planeGeometryVertices = [];
+  const planeGeometryVertexBuffer = planeGeometry3.getAttribute("position");
+
+  for (let i = 0; i < planeGeometryVertexBuffer.count; i++) {
+    // TODO: figure out why these are flipped
+    const vertex = new THREE.Vector3(
+      planeGeometryVertexBuffer.getZ(i),
+      planeGeometryVertexBuffer.getY(i),
+      planeGeometryVertexBuffer.getX(i)
+    );
+
+    planeGeometryVertices.push(vertex);
+  }
+
+  const planeCornersIn2D = intersectionsTo2DSpace(
+    plane.normal,
+    planeGeometryVertices
+  );
+
+  function findAngleBetweenShortSideAndYAxis(points) {
+    const sides = [
+      new THREE.Vector2().copy(points[0]).sub(points[1]),
+      new THREE.Vector2().copy(points[1]).sub(points[2]),
+      new THREE.Vector2().copy(points[2]).sub(points[3]),
+      new THREE.Vector2().copy(points[3]).sub(points[0]),
+    ];
+
+    const shortSide = sides.reduce((a, b) => (a.length() < b.length() ? a : b));
+
+    const yAxis = new THREE.Vector2(0, 1);
+
+    return shortSide.angleTo(yAxis);
+  }
+
+  const angle1 = findAngleBetweenShortSideAndYAxis(planeCornersIn2D);
+  const angle2 = findAngleBetweenShortSideAndYAxis(boundingRectVectors);
+
+  console.log({ angle1, angle2 });
+
+  const diff = angle1 - angle2;
+
+  // 13. Create a new mesh with the PlaneGeometry and PlaneMaterial
+  const planeMesh3 = new THREE.Mesh(planeGeometry3, planeMaterial3);
+  planeMesh3.lookAt(plane.normal);
+  planeMesh3.scale.multiply(new THREE.Vector3(1, -1, 1));
+  planeMesh3.rotateOnWorldAxis(plane.normal.normalize(), diff);
+
+  scene.add(planeMesh3);
+  meshesToRemove.push(planeMesh3);
 }
 
 function animate() {

@@ -1,6 +1,10 @@
 import { Vector2 } from "three";
 
-export function intersectionsTo2DSpace(planeNormal, intersections) {
+export function intersectionsTo2DSpace(
+  planeNormal,
+  intersections,
+  log = false
+) {
   // Center the 2D coordinate system on the first intersection vector
   const origin = intersections[0];
 
@@ -12,6 +16,10 @@ export function intersectionsTo2DSpace(planeNormal, intersections) {
     .clone()
     .cross(xAxisUnitVector)
     .normalize();
+
+  if (log) {
+    console.log({ xAxisUnitVector, yAxisUnitVector });
+  }
 
   // Represent each intersection in the 2D coordinate system
   const points = intersections.map((intersection) => {
