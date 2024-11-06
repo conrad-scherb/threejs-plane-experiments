@@ -413,6 +413,9 @@ function drawPlane() {
     transparent: true,
   });
 
+  // !!! make the planeGeometry3 look at the plane normal
+  planeGeometry3.lookAt(plane.normal);
+
   // 12. Rotate the PlaneGeometry such that the top left corner of the plane
   //     is at the first intersection point
 
@@ -489,33 +492,77 @@ function drawPlane() {
     planeGeometryVertices
   );
 
-  function findAngleBetweenShortSideAndYAxis(points) {
+  function findSideLengths(points) {
     const sides = [
-      new THREE.Vector2().copy(points[0]).sub(points[1]),
-      new THREE.Vector2().copy(points[1]).sub(points[2]),
-      new THREE.Vector2().copy(points[2]).sub(points[3]),
-      new THREE.Vector2().copy(points[3]).sub(points[0]),
+      new THREE.Vector3().copy(points[0]).sub(points[1]),
+      new THREE.Vector3().copy(points[1]).sub(points[2]),
+      new THREE.Vector3().copy(points[2]).sub(points[3]),
+      new THREE.Vector3().copy(points[3]).sub(points[0]),
     ];
 
-    const shortSide = sides.reduce((a, b) => (a.length() < b.length() ? a : b));
-
-    const yAxis = new THREE.Vector2(0, 1);
-
-    return shortSide.angleTo(yAxis);
+    return sides.map((s) => s.length());
   }
 
-  const angle1 = findAngleBetweenShortSideAndYAxis(planeCornersIn2D);
-  const angle2 = findAngleBetweenShortSideAndYAxis(boundingRectVectors);
+  function findShortSide(points) {
+    const sides = [
+      new THREE.Line3(points[0], points[1]),
+      new THREE.Line3(points[1], points[2]),
+      new THREE.Line3(points[2], points[3]),
+      new THREE.Line3(points[3], points[0]),
+    ];
 
-  console.log({ angle1, angle2 });
+    return sides.reduce((a, b) => (a.distance() < b.distance() ? a : b));
+  }
+  const orderedPlaneGeometryVertices = [
+    planeGeometryVertices[0],
+    planeGeometryVertices[1],
+    planeGeometryVertices[3],
+    planeGeometryVertices[2],
+  ];
 
-  const diff = angle1 - angle2;
+  const side1 = findShortSide(orderedPlaneGeometryVertices);
+  const side2 = findShortSide(intersectionBoundingRectIn3D);
+
+  const s1Lengths = findSideLengths(orderedPlaneGeometryVertices);
+  const s2Lengths = findSideLengths(intersectionBoundingRectIn3D);
+
+  // const diff = side1.angleTo(side2);
+  // const diffInDegrees = diff * (180 / Math.PI);
+
+  // Draw a thick line around the plane geometry short side
+  const lineGeometry = new THREE.BufferGeometry();
+  const lineVertices = new Float32Array(6);
+
+  lineVertices[0] = side1.start.x;
+  lineVertices[1] = side1.start.y;
+  lineVertices[2] = side1.start.z;
+
+  lineVertices[3] = side1.end.x;
+  lineVertices[4] = side1.end.y;
+  lineVertices[5] = side1.end.z;
+
+  lineGeometry.setAttribute(
+    "position",
+    new THREE.BufferAttribute(lineVertices, 3)
+  );
+  //orange
+  const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffa500 });
+  const line = new THREE.Line(lineGeometry, lineMaterial);
+  scene.add(line);
+
+  console.log({
+    boundingRectVectors,
+    //diffInDegrees,
+    side1,
+    side2,
+    s1Lengths,
+    s2Lengths,
+  });
 
   // 13. Create a new mesh with the PlaneGeometry and PlaneMaterial
   const planeMesh3 = new THREE.Mesh(planeGeometry3, planeMaterial3);
-  planeMesh3.lookAt(plane.normal);
-  planeMesh3.scale.multiply(new THREE.Vector3(1, -1, 1));
-  planeMesh3.rotateOnWorldAxis(plane.normal.normalize(), diff);
+  //planeMesh3.lookAt(plane.normal);
+  // planeMesh3.scale.multiply(new THREE.Vector3(1, -1, 1));
 
   scene.add(planeMesh3);
   meshesToRemove.push(planeMesh3);
